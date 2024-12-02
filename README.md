@@ -10,7 +10,7 @@ Every microcontroller project I do ends up with a command shell on the UART. Thi
 
 ## Running
 
-Developed with `zig 0.11.0-dev.1457+cb9d00e1a`
+Developed with `zig 0.13.0`
 
     zig build run
 
