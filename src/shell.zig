@@ -101,7 +101,7 @@ pub fn loop() !void {
         }
         switch(key.?) {
             ascii.etx => {  // ctrl-c
-                std.os.exit(0); // FIXME, should return error from loop?
+                std.process.exit(0); // FIXME, should return error from loop?
             },
             ascii.cr, ascii.lf => {
                 got_line = true;
@@ -120,7 +120,7 @@ pub fn loop() !void {
                 var matches:[cmdTable.len] usize = .{undefined} ** (cmdTable.len);  // indices of matching commands
                 var numMatches:usize = 0;
                 // look for matches
-                for (cmdTable) |cmd, index| {
+                for (cmdTable, 0..) |cmd, index| {
                     if (std.mem.startsWith(u8, cmd.name, cmdbuf[0..cmdbuf_len])) {
                         matches[numMatches] = index;
                         numMatches += 1;
@@ -131,7 +131,7 @@ pub fn loop() !void {
                         1 => {  // exactly one match
                             const cmd = cmdTable[matches[0]];
                             try term.write(cmd.name[cmdbuf_len..]);
-                            std.mem.copy(u8, &cmdbuf, cmd.name);
+                            std.mem.copyForwards(u8, &cmdbuf, cmd.name);
                             cmdbuf_len = cmd.name.len;
                             cmdbuf[cmdbuf_len] = 0;
                         },
@@ -151,14 +151,14 @@ pub fn loop() !void {
             else => {
                 // echo
                 if (cmdbuf_len < CMDBUF_SIZE_BYTES) {
-                    try term.write(@ptrCast(*const[1]u8, &key.?));  // u8 to single-item slice
+                    try term.write(@as(*const[1]u8, @ptrCast(&key.?)));  // u8 to single-item slice
 
                     cmdbuf[cmdbuf_len] = key.?;
                     cmdbuf_len = cmdbuf_len + 1;
                     cmdbuf[cmdbuf_len] = 0;
                 } else {
                     const bel:u8 = ascii.bel;
-                    try term.write(@ptrCast(*const[1]u8, &bel));    // u8 to single-item slice
+                    try term.write(@as(*const[1]u8, @ptrCast(&bel)));    // u8 to single-item slice
                 }
             }
         }
