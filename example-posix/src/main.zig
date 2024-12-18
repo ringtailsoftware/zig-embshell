@@ -1,4 +1,6 @@
 const std = @import("std");
+const embshell = @import("embshell");
+
 const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("termios.h");
@@ -47,10 +49,26 @@ pub fn getch() ?u8 {
     return b;
 }
 
-pub fn write(buf:[]const u8) !void {
+pub fn write(buf:[]const u8) void {
     const count = c.write(std.os.linux.STDOUT_FILENO, @ptrCast(buf.ptr), buf.len);
     if (count < buf.len) {
         std.debug.print("\nTBD, implement write retries\n", .{});
     }
 }
 
+pub fn main() !void {
+    // register commands with shell (comptime)
+
+    // setup raw mode on terminal so we can handle individual keypresses
+    init();
+    try embshell.init(write);
+    defer cleanup_terminal();
+
+    while (true) {
+        // FIXME poll and get chunk of data
+        if (getch()) |key| {
+            const buf:[1]u8 = .{key};
+            try embshell.loop(&buf);
+        }
+    }
+}
