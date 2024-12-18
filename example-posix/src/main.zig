@@ -1,8 +1,33 @@
 const std = @import("std");
-const EmbShell = @import("embshell").EmbShellFixed(.{.maxargs=2, .maxlinelen=128});
+const EmbShell = @import("embshell").EmbShellFixed(.{
+    .prompt = "myshell> ",
+    .maxargs = 16,
+    .maxlinelen = 128,
+    .cmdtable = &.{
+        .{ .name = "echo", .handler = echoHandler },
+        .{ .name = "led", .handler = ledHandler },
+    },
+});
+
+fn echoHandler(args:[][]const u8) anyerror!void {
+    const stdout_writer = std.io.getStdOut().writer();
+    try stdout_writer.print("You said: {s}\r\n", .{args});
+}
+
+fn ledHandler(args:[][]const u8) anyerror!void {
+    const stdout_writer = std.io.getStdOut().writer();
+    if (args.len < 2) {
+        try stdout_writer.print("{s} <0|1>\r\n", .{args[0]});
+        return error.BadArgs;
+    }
+
+    const val = std.fmt.parseInt(u32, args[1], 10) catch 0;   // if it parses and > 0, default to 0
+    try stdout_writer.print("If we had an LED it would be set to {}\r\n", .{val > 0});
+}
 
 var original_termios: ?std.posix.termios = null;
 
+// setup terminal in raw mode, for instant feedback on typed characters
 pub fn raw_mode_start() !void {
     const stdin_reader = std.io.getStdIn();
     const handle = stdin_reader.handle;
@@ -26,6 +51,7 @@ pub fn raw_mode_start() !void {
     try std.posix.tcsetattr(handle, .FLUSH, termios);
 }
 
+// return to original terminal mode
 pub fn raw_mode_stop() void {
     const stdout_writer = std.io.getStdOut().writer();
     const stdin_reader = std.io.getStdIn();
@@ -35,14 +61,7 @@ pub fn raw_mode_stop() void {
     _ = stdout_writer.print("\r\n", .{}) catch 0;
 }
 
-fn runcmd(args:[][]const u8) anyerror!void {
-    const stdout_writer = std.io.getStdOut().writer();
-    for (args, 0..) |arg, i| {
-        try stdout_writer.print("args[{d}]='{s}' ", .{i, arg});
-    }
-    try stdout_writer.print("\r\n", .{});
-}
-
+// callback for EmbShell to write bytes
 fn write(buf:[]const u8) void {
     const stdout_writer = std.io.getStdOut().writer();
     _ = stdout_writer.write(buf) catch 0;
@@ -57,7 +76,7 @@ pub fn main() !void {
     defer raw_mode_stop();
 
     // setup embshell with write and run callbacks
-    var shell = try EmbShell.init(write, runcmd, "myshell> ");
+    var shell = try EmbShell.init(write);
 
     outer: while (!done) {
         var fds = [_]std.posix.pollfd{
@@ -73,7 +92,7 @@ pub fn main() !void {
                 var buf: [4096]u8 = undefined;
                 const count = stdin_reader.read(&buf) catch 0;
                 if (count > 0) {
-                    shell.loop(buf[0..count]) catch |err| switch(err) {
+                    shell.feed(buf[0..count]) catch |err| switch(err) {
                         else => {
                             done = true;
                             continue :outer;
