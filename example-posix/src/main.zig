@@ -1,5 +1,5 @@
 const std = @import("std");
-const EmbShell = @import("embshell").EmbShell;
+const EmbShell = @import("embshell").EmbShellFixed(.{.maxargs=2, .maxlinelen=128});
 
 var original_termios: ?std.posix.termios = null;
 
