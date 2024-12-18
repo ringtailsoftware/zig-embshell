@@ -1,5 +1,5 @@
 const std = @import("std");
-const embshell = @import("embshell");
+const EmbShell = @import("embshell").EmbShell;
 
 var original_termios: ?std.posix.termios = null;
 
@@ -57,7 +57,7 @@ pub fn main() !void {
     defer raw_mode_stop();
 
     // setup embshell with write and run callbacks
-    try embshell.init(write, runcmd);
+    var shell = try EmbShell.init(write, runcmd, "myshell> ");
 
     outer: while (!done) {
         var fds = [_]std.posix.pollfd{
@@ -73,7 +73,7 @@ pub fn main() !void {
                 var buf: [4096]u8 = undefined;
                 const count = stdin_reader.read(&buf) catch 0;
                 if (count > 0) {
-                    embshell.loop(buf[0..count]) catch |err| switch(err) {
+                    shell.loop(buf[0..count]) catch |err| switch(err) {
                         else => {
                             done = true;
                             continue :outer;
