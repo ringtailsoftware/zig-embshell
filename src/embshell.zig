@@ -1,11 +1,19 @@
 const std = @import("std");
 const ascii = std.ascii.control_code;
 
-pub const EmbShellFixedParams = struct {
-    maxlinelen:usize,
-    maxargs:usize,
+pub const EmbShellCmd = struct {
+    name:[]const u8,
+    handler: *const fn(args:[][]const u8) anyerror!void
 };
 
+pub const EmbShellFixedParams = struct {
+    prompt: []const u8,
+    maxlinelen:usize,
+    maxargs:usize,
+    cmdtable:[]const EmbShellCmd,
+};
+
+// returns an EmbShell setup according to EmbShellFixedParams
 pub fn EmbShellFixed(comptime params:EmbShellFixedParams) type {
     return struct {
         const Self = @This();
@@ -14,26 +22,50 @@ pub fn EmbShellFixed(comptime params:EmbShellFixedParams) type {
         cmdbuf:[params.maxlinelen+1]u8 = undefined,
         cmdbuf_len:usize,
         writeFn:*const fn(data:[]const u8) void,
-        runFn:*const fn(args:[][]const u8) anyerror!void,
-        prompt_str:[]const u8,
 
+        pub const Cmd = struct{
+            name: [] const u8,
+            handler: *const fn(args:[][]const u8) anyerror!void,
+        };
 
         pub fn prompt(self: *const Self) !void {
-            self.writeFn(self.prompt_str);
+            self.writeFn(params.prompt);
         }
 
-        pub fn init(wfn: *const fn(data:[]const u8) void, rfn: *const fn(args:[][]const u8) anyerror!void, prompt_str:[]const u8) !Self {
+        pub fn init(wfn: *const fn(data:[]const u8) void) !Self {
             const self = Self{ 
-                .runFn = rfn,
                 .writeFn = wfn,
                 .got_line = false,
                 .cmdbuf_len = 0,
                 .cmdbuf = .{0} ** (params.maxlinelen+1),
-                .prompt_str = prompt_str,
             };
             try self.prompt();
             return self;
         }
+
+        fn runcmd(self:*Self, args:[][]const u8) !void {
+            if (args.len > 0) {
+                for (params.cmdtable) |cmd| {
+                    if (std.mem.eql(u8, cmd.name, args[0])) {
+                        // exec cmd handler
+                        cmd.handler(args) catch {
+                            self.writeFn("Failed\r\n");
+                            return;
+                        };
+                        self.writeFn("OK\r\n");
+                        return;
+                    }
+                }
+                // special case for help, generate it automatically from cmdtable
+                if (std.mem.eql(u8, args[0], "help")) {
+                    for (params.cmdtable) |cmd| {
+                        self.writeFn(cmd.name);
+                        self.writeFn("\r\n");
+                    }
+                }
+            }
+        }
+
 
         // execute a command line
         fn execline(self: *Self, line:[]const u8) !void {
@@ -49,10 +81,10 @@ pub fn EmbShellFixed(comptime params:EmbShellFixedParams) type {
                 }
                 argv[argc] = chunk;
             }
-            try self.runFn(argv[0..argc]);
+            try self.runcmd(argv[0..argc]);
         }
 
-        pub fn loop(self: *Self, data:[]const u8) !void {
+        pub fn feed(self: *Self, data:[]const u8) !void {
             for (data) |key| {
                 if (self.got_line) {
                     // buffer is already full
@@ -73,6 +105,38 @@ pub fn EmbShellFixed(comptime params:EmbShellFixedParams) type {
 
                             const bs: [3]u8 = .{ascii.bs, ' ', ascii.bs};
                             self.writeFn(&bs);
+                        }
+                    },
+                    ascii.ht => { // Tab
+                        var matches:[params.cmdtable.len] usize = .{undefined} ** (params.cmdtable.len);  // indices of matching commands
+                        var numMatches:usize = 0;
+                        // look for matches
+                        for (params.cmdtable, 0..) |cmd, index| {
+                            if (std.mem.startsWith(u8, cmd.name, self.cmdbuf[0..self.cmdbuf_len])) {
+                                matches[numMatches] = index;
+                                numMatches += 1;
+                            }
+                        }
+                        if (numMatches > 0) {
+                            switch(numMatches) {
+                                1 => {  // exactly one match
+                                    const cmd = params.cmdtable[matches[0]];
+                                    self.writeFn(cmd.name[self.cmdbuf_len..]);
+                                    std.mem.copyForwards(u8, &self.cmdbuf, cmd.name);
+                                    self.cmdbuf_len = cmd.name.len;
+                                    self.cmdbuf[self.cmdbuf_len] = 0;
+                                },
+                                else => { // multiple matches
+                                    self.writeFn("\r\n");
+                                    for (matches) |match| {
+                                        const cmd = params.cmdtable[match];
+                                        self.writeFn(cmd.name);
+                                        self.writeFn("\r\n");
+                                    }
+                                    try self.prompt();
+                                    self.writeFn(self.cmdbuf[0..self.cmdbuf_len]);
+                                }
+                            }
                         }
                     },
                     else => {

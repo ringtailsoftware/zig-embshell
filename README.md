@@ -1,39 +1,103 @@
-# zig-embshell
+# EmbShell
 
-Toby Jaffey https://mastodon.me.uk/@tobyjaffey
+A very small interactive command shell for (embedded) Zig programs.
 
-A small interactive command line for Zig programs.
+Compared with Readline, Linenoise and Editline - EmbShell is tiny. It lacks most of their features, but it does have:
 
-Every microcontroller project I do ends up with a command shell on the UART. This is an implementation of a similar system in zig.
+ - Tab completion for command names
+ - Backspace for line editing
+ - No reliance on libc and very little use of Zig's `std` (ie. no fancy print formatting)
+ - Very little RAM use (just a configurable buffer for the incoming command line)
 
-**Note**: zig-embshell is my first ever program in zig. For me, it's a learning exercise.
+In EmbShell:
 
-## Running
+ - All commands and configuration are set at `comptime` to optimise footprint
+ - All arguments are separated by whitespace, there is no support for quoted strings, multiline commands or escaped data
+ - All handler arguments are strings, leaving it to the app to decide how to parse them
+ - No runtime memory allocations
+
+## Using
 
 Developed with `zig 0.13.0`
 
+### Run the sample
+
+    cd example-posix
     zig build run
 
-## Adding commands
+```
+myshell> help
+echo
+led
+myshell> echo hello world
+You said: { echo, hello, world }
+OK
+myshell> led 1
+If we had an LED it would be set to true
+OK
+```
 
-Edit `src/cmds.zig`
+## Using in your own project
 
-Each handler is registered in `cmdTable` which is `const` and constructed at `comptime`. Every handler is passed `argc` (the number of arguments) and an `argv` array. `argv[0]` is the command name, the arguments follow.
+First add the library as a dependency in your `build.zig.zon` file.
 
-## Features
+`zig fetch --save git+https://github.com/ringtailsoftware/zig-embshell.git`
 
- - Basic tab completion (command names only)
- - Backspace for basic line editing
+And add it to `build.zig` file.
+```zig
+const embshell_dep = b.dependency("embshell", .{
+    .target = target,
+    .optimize = optimize,
+});
 
-## Aims
+exe.root_module.addImport("embshell", embshell_dep.module("embshell"));
+```
 
- - Learn some zig
- - Be reasonably readable
- - Target a tiny system with no heap
- - Keep term.zig small and portable
+`@import` the module and provide a configuration.
 
-## Non-Aims
+ - `.prompt` is the string shown to the user before each command is entered
+ - `.maxargs` is the maximum number of arguments EmbShell will process (e.g. "mycmd foo bar" is 3 arguments)
+ - `.maxlinelen` is the maximum length of a line to be handled, a buffer of this size will be created
+ - `.cmdtable` an array of names and handler function for commands
 
- - Don't be readline/linenoise (no history, nothing fancy)
- - No live adding of new commands, everything compiled in
+```zig
+const EmbShell = @import("embshell").EmbShellFixed(.{
+    .prompt = "myshell> ",
+    .maxargs = 16,
+    .maxlinelen = 128,
+    .cmdtable = &.{
+        .{ .name = "echo", .handler = echoHandler },
+        .{ .name = "led", .handler = ledHandler },
+    },
+});
+```
+
+
+Each handler function is in the following form. EmbShell prints "OK" after successfully executing each function and "Failed" if an error is returned.
+
+```zig
+fn myHandler(args:[][]const u8) anyerror!void {
+    // process args
+    // optionally return error
+}
+```
+
+Next, call `.init()` and provide a write callback to allow EmbShell to emit data
+
+```zig
+fn write(data:[]const u8) void {
+    // emit data to terminal
+}
+
+var shell = try EmbShell.init(write);
+```
+
+Finally, feed EmbShell with incoming data from the terminal to be processed
+
+```zig
+const buf = readFromMyTerminal();
+shell.feed(buf)
+```
+
+
 
