@@ -1,74 +1,89 @@
 const std = @import("std");
 const embshell = @import("embshell");
 
-const c = @cImport({
-    @cInclude("stdlib.h");
-    @cInclude("termios.h");
-    @cInclude("unistd.h");
-});
+var original_termios: ?std.posix.termios = null;
 
-// implementation of getch and write for linux terminal
+pub fn raw_mode_start() !void {
+    const stdin_reader = std.io.getStdIn();
+    const handle = stdin_reader.handle;
+    var termios = try std.posix.tcgetattr(handle);
+    original_termios = termios;
 
-var originalTermios: c.struct_termios = undefined;
+    termios.iflag.BRKINT = false;
+    termios.iflag.ICRNL = false;
+    termios.iflag.INPCK = false;
+    termios.iflag.ISTRIP = false;
+    termios.iflag.IXON = false;
+    termios.oflag.OPOST = false;
+    termios.lflag.ECHO = false;
+    termios.lflag.ICANON = false;
+    termios.lflag.IEXTEN = false;
+    termios.lflag.ISIG = false;
+    termios.cflag.CSIZE = .CS8;
+    termios.cc[@intFromEnum(std.posix.V.TIME)] = 0;
+    termios.cc[@intFromEnum(std.posix.V.MIN)] = 1;
 
-pub fn init() void {
-    if (c.tcgetattr(std.os.linux.STDIN_FILENO, &originalTermios) < 0) {
-        std.debug.print("could not get terminal settings\n", .{});
-        std.process.exit(1);
-    }
-
-    var raw: c.struct_termios = originalTermios;
-
-    // raw mode
-    raw.c_iflag &= ~@as(c_uint, c.BRKINT | c.ICRNL | c.INPCK | c.ISTRIP | c.IXON);
-    raw.c_lflag &= ~@as(c_uint, c.ECHO | c.ICANON | c.IEXTEN | c.ISIG);
-
-    // non-blocking reads
-    raw.c_cc[c.VMIN] = 0;
-    raw.c_cc[c.VTIME] = 1;  // 0.1s timeout
-
-    if (c.tcsetattr(std.os.linux.STDIN_FILENO, c.TCSANOW, &raw) < 0) {
-        std.debug.print("could not set new terminal settings\n", .{});
-        std.process.exit(1);
-    }
-
-    _ = c.atexit(cleanup_terminal);
+    try std.posix.tcsetattr(handle, .FLUSH, termios);
 }
 
-fn cleanup_terminal() callconv(.C) void {
-    _ = c.tcsetattr(std.os.linux.STDIN_FILENO, c.TCSANOW, &originalTermios);
-    std.debug.print("\nFinished\n", .{});
+pub fn raw_mode_stop() void {
+    const stdout_writer = std.io.getStdOut().writer();
+    const stdin_reader = std.io.getStdIn();
+    if (original_termios) |termios| {
+        std.posix.tcsetattr(stdin_reader.handle, .FLUSH, termios) catch {};
+    }
+    _ = stdout_writer.print("\r\n", .{}) catch 0;
 }
 
-pub fn getch() ?u8 {
-    var b: u8 = undefined;
-    const count = c.read(std.os.linux.STDIN_FILENO, &b, 1);
-    if (count == 0) {
-        return null;
+fn runcmd(args:[][]const u8) anyerror!void {
+    const stdout_writer = std.io.getStdOut().writer();
+    for (args, 0..) |arg, i| {
+        try stdout_writer.print("args[{d}]='{s}' ", .{i, arg});
     }
-    return b;
+    try stdout_writer.print("\r\n", .{});
 }
 
-pub fn write(buf:[]const u8) void {
-    const count = c.write(std.os.linux.STDOUT_FILENO, @ptrCast(buf.ptr), buf.len);
-    if (count < buf.len) {
-        std.debug.print("\nTBD, implement write retries\n", .{});
-    }
+fn write(buf:[]const u8) void {
+    const stdout_writer = std.io.getStdOut().writer();
+    _ = stdout_writer.write(buf) catch 0;
 }
+
 
 pub fn main() !void {
-    // register commands with shell (comptime)
-
+    var done:bool = false;
+    const stdin_reader = std.io.getStdIn();
     // setup raw mode on terminal so we can handle individual keypresses
-    init();
-    try embshell.init(write);
-    defer cleanup_terminal();
+    try raw_mode_start();
+    defer raw_mode_stop();
 
-    while (true) {
-        // FIXME poll and get chunk of data
-        if (getch()) |key| {
-            const buf:[1]u8 = .{key};
-            try embshell.loop(&buf);
+    // setup embshell with write and run callbacks
+    try embshell.init(write, runcmd);
+
+    outer: while (!done) {
+        var fds = [_]std.posix.pollfd{
+            .{
+                .fd = stdin_reader.handle,
+                .events = std.posix.POLL.IN,
+                .revents = undefined,
+            }
+        };
+        const ready = std.posix.poll(&fds, 1000) catch 0;
+        if (ready > 0) {
+            if (fds[0].revents == std.posix.POLL.IN) {
+                var buf: [4096]u8 = undefined;
+                const count = stdin_reader.read(&buf) catch 0;
+                if (count > 0) {
+                    embshell.loop(buf[0..count]) catch |err| switch(err) {
+                        else => {
+                            done = true;
+                            continue :outer;
+                        }
+                    };
+                } else {
+                    done = true;
+                    continue :outer;
+                }
+            }
         }
     }
 }
