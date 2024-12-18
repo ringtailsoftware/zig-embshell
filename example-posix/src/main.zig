@@ -9,19 +9,22 @@ const EmbShell = @import("embshell").EmbShellFixed(.{
     },
 });
 
-fn echoHandler(args:[][]const u8) anyerror!void {
+// handler for the "echo" command
+fn echoHandler(args: [][]const u8) anyerror!void {
     const stdout_writer = std.io.getStdOut().writer();
     try stdout_writer.print("You said: {s}\r\n", .{args});
 }
 
-fn ledHandler(args:[][]const u8) anyerror!void {
+// handler for the "led" command
+fn ledHandler(args: [][]const u8) anyerror!void {
     const stdout_writer = std.io.getStdOut().writer();
     if (args.len < 2) {
+        // check that there are the right number of arguments
         try stdout_writer.print("{s} <0|1>\r\n", .{args[0]});
         return error.BadArgs;
     }
 
-    const val = std.fmt.parseInt(u32, args[1], 10) catch 0;   // if it parses and > 0, default to 0
+    const val = std.fmt.parseInt(u32, args[1], 10) catch 0; // if it parses and > 0, default to 0
     try stdout_writer.print("If we had an LED it would be set to {}\r\n", .{val > 0});
 }
 
@@ -62,41 +65,40 @@ pub fn raw_mode_stop() void {
 }
 
 // callback for EmbShell to write bytes
-fn write(buf:[]const u8) void {
+fn write(buf: []const u8) void {
     const stdout_writer = std.io.getStdOut().writer();
     _ = stdout_writer.write(buf) catch 0;
 }
 
-
 pub fn main() !void {
-    var done:bool = false;
+    var done: bool = false;
     const stdin_reader = std.io.getStdIn();
     // setup raw mode on terminal so we can handle individual keypresses
     try raw_mode_start();
     defer raw_mode_stop();
 
-    // setup embshell with write and run callbacks
+    // setup embshell with write callback
     var shell = try EmbShell.init(write);
 
+    // read from keyboard
     outer: while (!done) {
-        var fds = [_]std.posix.pollfd{
-            .{
-                .fd = stdin_reader.handle,
-                .events = std.posix.POLL.IN,
-                .revents = undefined,
-            }
-        };
+        var fds = [_]std.posix.pollfd{.{
+            .fd = stdin_reader.handle,
+            .events = std.posix.POLL.IN,
+            .revents = undefined,
+        }};
         const ready = std.posix.poll(&fds, 1000) catch 0;
         if (ready > 0) {
             if (fds[0].revents == std.posix.POLL.IN) {
                 var buf: [4096]u8 = undefined;
                 const count = stdin_reader.read(&buf) catch 0;
                 if (count > 0) {
-                    shell.feed(buf[0..count]) catch |err| switch(err) {
+                    // send bytes to EmbShell for processing
+                    shell.feed(buf[0..count]) catch |err| switch (err) {
                         else => {
                             done = true;
                             continue :outer;
-                        }
+                        },
                     };
                 } else {
                     done = true;

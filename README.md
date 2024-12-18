@@ -2,6 +2,8 @@
 
 A very small interactive command shell for (embedded) Zig programs.
 
+EmbShell makes an ideal system monitor for debugging and interacting with a small embedded system. It interactively takes lines of text, parses commands and makes callbacks into handler functions.
+
 Compared with Readline, Linenoise and Editline - EmbShell is tiny. It lacks most of their features, but it does have:
 
  - Tab completion for command names
@@ -49,7 +51,6 @@ const embshell_dep = b.dependency("embshell", .{
     .target = target,
     .optimize = optimize,
 });
-
 exe.root_module.addImport("embshell", embshell_dep.module("embshell"));
 ```
 
