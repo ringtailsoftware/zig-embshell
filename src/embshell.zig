@@ -70,7 +70,7 @@ pub fn EmbShellFixed(comptime params:EmbShellFixedParams) type {
         // execute a command line
         fn execline(self: *Self, line:[]const u8) !void {
             // tokenize, returns iterator to slices
-            var tokens = std.mem.tokenize(u8, line, " ");
+            var tokens = std.mem.tokenizeAny(u8, line, " ");
             // setup argv array to hold tokens
             var argv:[params.maxargs] []const u8 = .{undefined} ** params.maxargs;
             var argc:u8 = 0;

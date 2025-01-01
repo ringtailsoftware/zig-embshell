@@ -20,7 +20,7 @@ In EmbShell:
 
 ## Using
 
-Developed with `zig 0.13.0`
+Developed with `zig 0.14.0`
 
 ### Run the sample
 
