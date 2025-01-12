@@ -62,6 +62,8 @@ exe.root_module.addImport("embshell", embshell_dep.module("embshell"));
  - `.cmdtable` an array of names and handler function for commands
 
 ```zig
+const UserdataT = u32;
+const EmbShellT = @import("embshell").EmbShellFixedParams(UserdataT);
 const EmbShell = @import("embshell").EmbShellFixed(.{
     .prompt = "myshell> ",
     .maxargs = 16,
@@ -70,6 +72,7 @@ const EmbShell = @import("embshell").EmbShellFixed(.{
         .{ .name = "echo", .handler = echoHandler },
         .{ .name = "led", .handler = ledHandler },
     },
+    .userdataT = UserdataT,
 });
 ```
 
@@ -77,7 +80,7 @@ const EmbShell = @import("embshell").EmbShellFixed(.{
 Each handler function is in the following form. EmbShell prints "OK" after successfully executing each function and "Failed" if an error is returned.
 
 ```zig
-fn myHandler(args:[][]const u8) anyerror!void {
+fn myHandler(userdata: UserdataT, args:[][]const u8) anyerror!void {
     // process args
     // optionally return error
 }
@@ -90,7 +93,7 @@ fn write(data:[]const u8) void {
     // emit data to terminal
 }
 
-var shell = try EmbShell.init(write);
+var shell = try EmbShell.init(write, userdata);
 ```
 
 Finally, feed EmbShell with incoming data from the terminal to be processed

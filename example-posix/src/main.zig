@@ -1,5 +1,7 @@
 const std = @import("std");
-const EmbShell = @import("embshell").EmbShellFixed(.{
+
+const EmbShellT = @import("embshell").EmbShellFixedParams(u32);
+const EmbShell = @import("embshell").EmbShellFixed(EmbShellT{
     .prompt = "myshell> ",
     .maxargs = 16,
     .maxlinelen = 128,
@@ -7,20 +9,21 @@ const EmbShell = @import("embshell").EmbShellFixed(.{
         .{ .name = "echo", .handler = echoHandler },
         .{ .name = "led", .handler = ledHandler },
     },
+    .userdataT = u32,
 });
 
 // handler for the "echo" command
-fn echoHandler(args: [][]const u8) anyerror!void {
+fn echoHandler(userdata: u32, args: [][]const u8) anyerror!void {
     const stdout_writer = std.io.getStdOut().writer();
-    try stdout_writer.print("You said: {s}\r\n", .{args});
+    try stdout_writer.print("userdata={any} You said: {s}\r\n", .{ userdata, args });
 }
 
 // handler for the "led" command
-fn ledHandler(args: [][]const u8) anyerror!void {
+fn ledHandler(userdata: u32, args: [][]const u8) anyerror!void {
     const stdout_writer = std.io.getStdOut().writer();
     if (args.len < 2) {
         // check that there are the right number of arguments
-        try stdout_writer.print("{s} <0|1>\r\n", .{args[0]});
+        try stdout_writer.print("userdata={any} {s} <0|1>\r\n", .{ userdata, args[0] });
         return error.BadArgs;
     }
 
@@ -78,7 +81,7 @@ pub fn main() !void {
     defer raw_mode_stop();
 
     // setup embshell with write callback
-    var shell = try EmbShell.init(write);
+    var shell = try EmbShell.init(write, 42);
 
     // read from keyboard
     outer: while (!done) {
