@@ -1,0 +1,10 @@
+.{
+    .name = "embshell",
+    .version = "0.0.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
