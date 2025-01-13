@@ -154,15 +154,15 @@ pub fn EmbShellFixed(comptime params: anytype) type {
                         }
                     },
                 }
-            }
-            if (self.got_line) {
-                if (self.cmdbuf_len > 0) {
-                    try self.execline(self.cmdbuf[0..self.cmdbuf_len]);
+                if (self.got_line) {
+                    if (self.cmdbuf_len > 0) {
+                        try self.execline(self.cmdbuf[0..self.cmdbuf_len]);
+                    }
+                    self.cmdbuf_len = 0;
+                    self.cmdbuf[self.cmdbuf_len] = 0;
+                    try self.prompt();
+                    self.got_line = false;
                 }
-                self.cmdbuf_len = 0;
-                self.cmdbuf[self.cmdbuf_len] = 0;
-                try self.prompt();
-                self.got_line = false;
             }
         }
     };
