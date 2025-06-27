@@ -1,5 +1,6 @@
 .{
-    .name = "example-posix",
+    .name = .example_posix,
+    .fingerprint = 0xfedd49cf991075e4,
     .version = "0.0.0",
     .dependencies = .{
         .embshell = .{ .path = ".." },

@@ -1,5 +1,6 @@
 .{
-    .name = "embshell",
+    .name = .embshell,
+    .fingerprint = 0xd1c4b72265c71fef,
     .version = "0.0.1",
     .dependencies = .{},
     .paths = .{
