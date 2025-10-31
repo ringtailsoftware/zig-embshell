@@ -104,8 +104,8 @@ pub fn main() !void {
         const ready = std.posix.poll(&fds, 1000) catch 0;
         if (ready > 0) {
             if (fds[0].revents == std.posix.POLL.IN) {
-                var buf: [1]u8 = undefined;
-                const count = try stdin_reader.readSliceShort(&buf);
+                var buf:[128]u8 = undefined;
+                const count = try std.posix.read(stdin_reader_handle, &buf);
 
                 if (count > 0) {
                     // send bytes to EmbShell for processing
